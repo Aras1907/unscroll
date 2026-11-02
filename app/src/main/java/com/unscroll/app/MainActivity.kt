@@ -86,7 +86,7 @@ private fun Home(prefs: Prefs) {
         ) {
             Text("Unscroll", fontSize = 40.sp, fontWeight = FontWeight.Bold)
             Text(
-                "Your friends' reels, yes. The bottomless feed, no.",
+                "Watch the reel in front of you. Just not the next hundred.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -96,30 +96,31 @@ private fun Home(prefs: Prefs) {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Stat("Stopped today", today, Modifier.weight(1f))
+                Stat("Swipes undone today", today, Modifier.weight(1f))
                 Stat("All time", total, Modifier.weight(1f))
             }
 
-            SectionTitle("Guard these")
+            SectionTitle("Short videos", "Watch what's on screen. Swiping to the next one snaps back.")
             Card(shape = RoundedCornerShape(24.dp)) {
-                AppToggle(prefs, Target.INSTAGRAM, "Instagram", "Reels tab, home feed and Explore")
-                AppToggle(prefs, Target.INSTAGRAM_LITE, "Instagram Lite", "Reels and home feed (best effort, Lite hides a lot)")
-                AppToggle(prefs, Target.YOUTUBE, "YouTube", "Shorts only. Normal videos are left alone")
-                AppToggle(prefs, Target.REDDIT, "Reddit", "Home and Popular feeds")
+                AppToggle(prefs, Guard.INSTAGRAM_REELS, "Instagram Reels", "Reels tab, and reels opened from anywhere else")
+                AppToggle(prefs, Guard.LITE_REELS, "Instagram Lite Reels", "Best effort. Lite shows other apps very little")
+                AppToggle(prefs, Guard.YOUTUBE_SHORTS, "YouTube Shorts", "Normal videos are left alone")
             }
+            Text(
+                "Reels friends send you in DMs still open and play. You just can't swipe on to the next one.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
 
-            SectionTitle("Exceptions")
+            SectionTitle("Feeds", "You see what's at the top. Scrolling down is undone.")
             Card(shape = RoundedCornerShape(24.dp)) {
-                var dm by remember { mutableStateOf(prefs.allowDmReels) }
-                ToggleRow(
-                    "Let reels from DMs through",
-                    "Watch the one a friend sent you. Swipe to the next one and you're back in the chat.",
-                    dm,
-                ) { dm = it; prefs.allowDmReels = it }
+                AppToggle(prefs, Guard.INSTAGRAM_FEED, "Instagram feed", "Home feed in Instagram and Instagram Lite")
+                AppToggle(prefs, Guard.REDDIT_FEED, "Reddit feed", "Home and Popular")
             }
 
             Text(
-                "Everything happens on your phone. Unscroll reads screen layout only to recognise Reels and feeds, and it never stores or sends what it sees.",
+                "Everything happens on your phone. Unscroll reads screen layout only to recognise Reels, Shorts and feeds, and it never stores or sends what it sees.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
@@ -144,8 +145,8 @@ private fun StatusCard(on: Boolean, openSettings: () -> Unit) {
                 )
             }
             Text(
-                if (on) "Go ahead and open Instagram. You'll hit a wall where the scrolling starts."
-                else "Unscroll needs accessibility access to see when you land on Reels or Shorts. Tap below, open \"Unscroll guard\" and switch it on.",
+                if (on) "Go ahead and open Instagram. Try swiping to the next reel."
+                else "Unscroll needs accessibility access to notice when you swipe in Reels or Shorts and scroll it back. Tap below, open \"Unscroll guard\" and switch it on.",
             )
             if (!on) {
                 Text(
@@ -171,14 +172,17 @@ private fun Stat(label: String, value: Int, modifier: Modifier) {
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+private fun SectionTitle(text: String, detail: String) {
+    Column(Modifier.padding(top = 8.dp, start = 4.dp)) {
+        Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable
-private fun AppToggle(prefs: Prefs, t: Target, name: String, detail: String) {
-    var on by remember { mutableStateOf(prefs.isOn(t)) }
-    ToggleRow(name, detail, on) { on = it; prefs.setOn(t, it) }
+private fun AppToggle(prefs: Prefs, g: Guard, name: String, detail: String) {
+    var on by remember { mutableStateOf(prefs.isOn(g)) }
+    ToggleRow(name, detail, on) { on = it; prefs.setOn(g, it) }
 }
 
 @Composable

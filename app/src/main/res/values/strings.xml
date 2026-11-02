@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">Unscroll</string>
     <string name="service_label">Unscroll guard</string>
-    <string name="service_description">Unscroll watches Instagram, Instagram Lite, YouTube and Reddit for the endless parts (Reels, Shorts, home feeds) and puts a wall in front of them. It reads screen layout only to recognise those screens. Nothing is stored or sent anywhere.</string>
+    <string name="service_description">Unscroll turns off scrolling in Instagram Reels, YouTube Shorts and the feeds you pick. You can still watch what\'s on screen, including reels friends send you, but swiping to the next one snaps back. It reads screen layout only to recognise those screens. Nothing is stored or sent anywhere.</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.unscroll.app
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -8,204 +9,141 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
-import kotlin.math.abs
 
+/**
+ * Lets you look at whatever is on screen, but undoes scrolling forward in Reels, Shorts and feeds.
+ * A reel opened from a DM plays like any other; swiping to the next one just snaps back.
+ */
 class GuardService : AccessibilityService() {
 
-    /** A reel that was opened from a DM. It may be watched, but swiping to the next one ends it. */
-    private class DmReel(val openedAt: Long) {
-        var index = -1
-        var travelled = 0
-        var exitingSince = 0L
-    }
-
     private lateinit var prefs: Prefs
-    private lateinit var shield: Shield
     private val main = Handler(Looper.getMainLooper())
 
     private var current: Target? = null
-    private var lastScreen = Screen.OK
-    private var lastDmAt = 0L
-    private var dmReel: DmReel? = null
-    private var quietUntil = 0L
+    private var screen = Screen.OK
+    private var screenSince = 0L
+    /** Position of the item you landed on. Anything past it gets scrolled back. */
+    private var anchor = -1
+    /** For views that don't report positions: how far you've dragged a short. */
+    private var travelled = 0
+    private var lastSnap = 0L
+    private var lastToast = 0L
+    private var backedOut = false
     private var evalPending = false
+    /** A screen change only counts once two evaluations in a row agree, so loading blips don't reset [anchor]. */
+    private var pending: Pair<Target, Screen>? = null
 
     override fun onServiceConnected() {
         prefs = Prefs(this)
-        shield = Shield(this, ::primaryAction) {
-            shield.hide()
-            performGlobalAction(GLOBAL_ACTION_HOME)
-        }
     }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
-        if (!::shield.isInitialized || e.packageName == packageName) return
-        val t = Target.of(e.packageName?.toString())
-        if (t != null && e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED && prefs.isOn(t)) onScroll(t, e)
-        if (t != null || shield.isShowing || e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) scheduleEval()
+        if (!::prefs.isInitialized) return
+        val t = Target.of(e.packageName?.toString()) ?: return
+        if (e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) onScroll(t, e)
+        scheduleEval()
     }
 
     override fun onInterrupt() {}
 
-    override fun onDestroy() {
-        if (::shield.isInitialized) shield.hide()
-        super.onDestroy()
-    }
-
-    private fun scheduleEval(delay: Long = 150) {
+    private fun scheduleEval() {
         if (evalPending) return
         evalPending = true
-        main.postDelayed({ evalPending = false; evaluate() }, delay)
+        main.postDelayed({ evalPending = false; evaluate() }, 150)
     }
 
     private fun evaluate() {
-        val (t, root) = foreground() ?: return reset()
-        if (!prefs.isOn(t)) return reset()
-        if (t != current) {
-            current = t
-            lastScreen = Screen.OK
-            dmReel = null
-        }
-
+        val (t, root) = foreground() ?: return
         val now = SystemClock.uptimeMillis()
-        val screen = Detectors.classify(t, Snapshot.of(root, screenH()))
-        when (screen) {
-            Screen.DM_THREAD -> { lastDmAt = now; dmReel = null }
-            Screen.VIEWER -> {
-                val reel = dmReel
-                if (lastScreen != Screen.VIEWER) {
-                    dmReel = if (prefs.allowDmReels && now - lastDmAt < DM_GRACE_MS) DmReel(now) else null
-                } else if (reel != null && reel.exitingSince > 0 && now - reel.exitingSince > EXIT_TIMEOUT_MS) {
-                    dmReel = null // the back press didn't take us out, so wall it off
-                }
-            }
-            Screen.OK -> dmReel = null
-            Screen.FEED, Screen.BLOCKED -> { dmReel = null; lastDmAt = 0 }
+        val s = Detectors.classify(t, Snapshot.of(root, screenH()))
+        if (t == current && s == screen) {
+            pending = null
+            return
         }
-        lastScreen = screen
-
-        val wall = screen == Screen.BLOCKED || (screen == Screen.VIEWER && dmReel == null)
-        when {
-            wall -> block(t, screen)
-            shield.isShowing && !(screen == Screen.FEED && shield.reason == Screen.FEED) -> shield.hide()
+        if (pending != t to s) {
+            pending = t to s
+            scheduleEval()
+            return
         }
+        pending = null
+        current = t
+        screen = s
+        screenSince = now
+        anchor = -1
+        travelled = 0
+        backedOut = false
     }
 
     private fun onScroll(t: Target, e: AccessibilityEvent) {
-        val now = SystemClock.uptimeMillis()
-        when (lastScreen) {
-            Screen.FEED -> if (isFeedScroll(e)) block(t, Screen.FEED)
-            Screen.VIEWER -> {
-                val reel = dmReel ?: return
-                if (reel.exitingSince > 0 || !coversScreen(e)) return
-                if (now - reel.openedAt < SETTLE_MS) {
-                    // Instagram scrolls the pager into place while opening; that isn't the user.
-                    reel.index = e.fromIndex
-                    return
-                }
-                reel.travelled += abs(e.scrollDeltaY.takeIf { it != -1 } ?: 0)
-                val swiped = (reel.index >= 0 && e.fromIndex >= 0 && e.fromIndex != reel.index) ||
-                    reel.travelled > screenH() / 3
-                if (reel.index < 0) reel.index = e.fromIndex
-                if (swiped) {
-                    reel.exitingSince = now
-                    prefs.countBlock()
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    Toast.makeText(this, "Just the one reel. Back to the chat.", Toast.LENGTH_SHORT).show()
-                }
-            }
-            else -> Unit
-        }
-    }
+        if (t != current) return
+        val guard = Guard.of(t, screen) ?: return
+        if (!prefs.isOn(guard)) return
 
-    private fun block(t: Target, why: Screen) {
-        if (shield.isShowing) return
+        val src = e.source ?: return
+        val r = Rect().also(src::getBoundsInScreen)
+        val minHeight = if (screen == Screen.SHORTS) 0.6 else 0.4
+        if (r.height() < screenH() * minHeight) return // comments sheet, stories tray, etc.
+        val dx = e.scrollDeltaX
+        val dy = e.scrollDeltaY
+        if (dx != 0 && dx != -1 && (dy == 0 || dy == -1)) return // sideways
+
         val now = SystemClock.uptimeMillis()
-        if (now < quietUntil) {
-            scheduleEval(quietUntil - now + 50)
+        val idx = e.fromIndex
+        if (anchor < 0 && now - screenSince < SETTLE_MS) {
+            // Apps scroll their pager into place while a screen opens; that's not the user.
+            anchor = idx
             return
         }
-        prefs.countBlock()
-        shield.show(t, why)
-    }
+        if (anchor < 0) anchor = 0
+        if (idx in 0 until anchor) anchor = idx
 
-    private fun primaryAction(t: Target) {
-        shield.hide()
-        quietUntil = SystemClock.uptimeMillis() + 900
-        when (t) {
-            Target.YOUTUBE -> performGlobalAction(GLOBAL_ACTION_BACK)
-            Target.REDDIT -> clickFirst { it.contentDescription?.toString().equals("Search", true) }
-                .also { if (!it) performGlobalAction(GLOBAL_ACTION_HOME) }
-            Target.INSTAGRAM, Target.INSTAGRAM_LITE -> {
-                if (!clickInbox()) {
-                    // Reels tab has no inbox button; hop to Home first, then try again.
-                    clickFirst { it.viewIdResourceName?.endsWith(":id/feed_tab") == true ||
-                        it.contentDescription?.toString()?.startsWith("Home", true) == true }
-                    main.postDelayed({ if (!clickInbox()) performGlobalAction(GLOBAL_ACTION_HOME) }, 700)
-                }
-            }
+        if (idx < 0 && dy > 0) travelled += dy
+
+        val forward = idx > anchor ||
+            (screen == Screen.FEED && dy > 0) ||
+            (screen == Screen.SHORTS && travelled > screenH() / 2)
+        if (!forward || now - lastSnap < SNAP_GAP_MS) return
+        lastSnap = now
+        travelled = 0
+
+        if (!scrollBack(src)) {
+            // No way to scroll this view back, so leave the screen instead (once).
+            if (screen != Screen.SHORTS || backedOut) return
+            backedOut = true
+            performGlobalAction(GLOBAL_ACTION_BACK)
         }
-        scheduleEval(1000)
+        prefs.countBlock()
+        if (now - lastToast > TOAST_GAP_MS) {
+            lastToast = now
+            val msg = if (screen == Screen.SHORTS) "Just this one. Scrolling is off here." else "Feed scrolling is off."
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
     }
 
-    private fun clickInbox() = clickFirst { n ->
-        val id = n.viewIdResourceName?.substringAfter(":id/") ?: ""
-        val desc = n.contentDescription?.toString() ?: ""
-        id == "action_bar_inbox_button" || id == "direct_tab" ||
-            listOf("Message", "Direct", "Messenger", "Chats").any { desc.startsWith(it, true) }
-    }
-
-    /** Clicks the first node matching [pred] (or its nearest clickable parent). */
-    private fun clickFirst(pred: (AccessibilityNodeInfo) -> Boolean): Boolean {
-        val root = foreground()?.second ?: return false
-        val stack = ArrayDeque(listOf(root))
-        while (stack.isNotEmpty()) {
-            val n = stack.removeLast()
-            if (n.isVisibleToUser && pred(n)) {
-                var c: AccessibilityNodeInfo? = n
-                while (c != null && !c.isClickable) c = c.parent
-                if (c?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return true
-            }
-            for (i in 0 until n.childCount) n.getChild(i)?.let(stack::addLast)
+    /** Scrolls [node], or the nearest scrollable view around it, back by a page. */
+    private fun scrollBack(node: AccessibilityNodeInfo): Boolean {
+        var n: AccessibilityNodeInfo? = node
+        while (n != null) {
+            if (n.isScrollable && n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return true
+            n = n.parent
         }
         return false
     }
 
     /** The guarded app on top of the screen, if there is one. */
     private fun foreground(): Pair<Target, AccessibilityNodeInfo>? {
-        val app = windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-        val root = app?.root ?: rootInActiveWindow ?: return null
+        val root = rootInActiveWindow
+            ?: windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isActive }?.root
+            ?: return null
         val t = Target.of(root.packageName?.toString()) ?: return null
         return t to root
-    }
-
-    private fun reset() {
-        current = null
-        lastScreen = Screen.OK
-        dmReel = null
-        shield.hide()
-    }
-
-    private fun isFeedScroll(e: AccessibilityEvent): Boolean {
-        val dx = e.scrollDeltaX
-        val dy = e.scrollDeltaY
-        if (dx != 0 && dx != -1 && (dy == 0 || dy == -1)) return false // stories tray etc.
-        val src = e.source ?: return true
-        val r = android.graphics.Rect().also(src::getBoundsInScreen)
-        return r.height() > screenH() * 0.4
-    }
-
-    private fun coversScreen(e: AccessibilityEvent): Boolean {
-        val src = e.source ?: return true
-        val r = android.graphics.Rect().also(src::getBoundsInScreen)
-        return r.height() > screenH() * 0.6
     }
 
     private fun screenH() = resources.displayMetrics.heightPixels
 
     companion object {
-        private const val DM_GRACE_MS = 5000L
-        private const val SETTLE_MS = 1200L
-        private const val EXIT_TIMEOUT_MS = 1500L
+        private const val SETTLE_MS = 1000L
+        private const val SNAP_GAP_MS = 350L
+        private const val TOAST_GAP_MS = 4000L
     }
 }

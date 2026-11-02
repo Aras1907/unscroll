@@ -2,19 +2,29 @@
 
 I kept opening Instagram to answer one message and looking up forty minutes later, deep in Reels. Deleting the app didn't work because that's where my friends actually talk to me. So I built this.
 
-Unscroll is a small Android app that puts a wall in front of the endless parts of Instagram, YouTube and Reddit and leaves the useful parts alone.
+Unscroll is a small Android app that turns off scrolling where it hurts. You can still open and watch whatever is on screen. You just can't swipe on to the next thing.
 
 **[Download the latest APK](https://github.com/Aras1907/unscroll/releases/latest)**
 
 ## What it does
 
-- **Instagram:** the Reels tab is walled off. The home feed and Explore are fine to glance at, but the moment you start scrolling them the wall comes up, with a button that takes you straight to your DMs.
-- **Reels your friends send you still work.** Tap a reel in a chat and it plays normally. Swipe up for the next one and Unscroll sends you back to the conversation. You get the one you were sent, not the hundred after it.
-- **Instagram Lite:** same idea, on a best-effort basis. Lite draws most of its screen itself and tells Android very little about what's on it, so detection there is rougher.
-- **YouTube:** only Shorts are blocked, both the Shorts tab and the Shorts player. Regular videos, search and subscriptions are untouched.
-- **Reddit:** scrolling the Home/Popular feed is blocked. Search, subreddits you look up on purpose, posts and your inbox still work.
+It doesn't block anything or throw up a lock screen. When you swipe, it quietly scrolls you back to where you were.
 
-Every app can be switched on or off, and the "reels from DMs" exception has its own toggle. There's a small counter on the home screen showing how many times it stopped you today. Seeing that number go up is a little humbling.
+### Short videos
+
+- **Instagram Reels:** the reel in front of you plays normally, whether you opened the Reels tab or tapped a reel somewhere else. Swipe up for the next one and it snaps back.
+- **Reels your friends send you still work.** Tap one in a chat and it plays like it always did. You get the one you were sent, not the hundred after it.
+- **Instagram Lite Reels:** same idea, on a best-effort basis. Lite draws most of its screen itself and tells Android very little about what's on it, so detection there is rougher.
+- **YouTube Shorts:** you can watch a Short, but you can't swipe to the next. Regular videos, search and subscriptions are untouched.
+
+### Feeds
+
+This is its own section, so you can keep Reels locked and decide separately about the feed.
+
+- **Instagram feed:** you see the top of your home feed (stories, the first post, the DM button), but scrolling down gets pulled back up.
+- **Reddit feed:** same for Home/Popular. Search, posts and your inbox work like normal.
+
+Every one of these has its own switch. There's also a counter showing how many swipes it undid today. Watching that number climb is a little humbling.
 
 ## Setting it up
 
@@ -22,16 +32,17 @@ Every app can be switched on or off, and the "reels from DMs" exception has its 
 2. Open Unscroll and tap **Turn on the guard**. This opens Accessibility settings. Find **Unscroll guard** and switch it on.
 3. **If the switch is greyed out:** Android 13+ blocks accessibility access for apps installed from an APK. Go to *Settings > Apps > Unscroll*, tap the ⋮ menu in the top corner, choose **Allow restricted settings**, then go back and try again.
 
-That's it. Open Instagram and try to scroll.
+That's it. Open Reels and try swiping to the next one.
 
 ## Why it needs accessibility access
 
-That's the only way an app can tell which screen another app is showing. Unscroll uses it to recognise the Reels tab, the Shorts player and the feeds, and to press "back" for you when you swipe past a DM reel. It has no internet permission at all, so nothing it sees can leave your phone, and it doesn't store any of it either. The only thing it saves is the block counter.
+That's the only way an app can tell which screen another app is showing. Unscroll uses it to recognise Reels, Shorts and the feeds, and to scroll them back when you swipe. It has no internet permission at all, so nothing it sees can leave your phone, and it doesn't store any of it either. The only thing it saves is the block counter.
 
 ## Honest limitations
 
 - It works by recognising the apps' screen layouts. When Instagram, YouTube or Reddit redesign something, a check can stop matching until it's updated. If something slips through, please open an issue and say which app version you're on.
-- I tested the YouTube Shorts blocking on an Android 15 emulator. The Instagram and Reddit checks are built on their current layouts but haven't been tested against every version or every account (Instagram runs a lot of A/B tests).
+- The snap-back was tested on an Android 15 emulator against a vertical pager and a feed list built the same way these apps build theirs. It hasn't been tested on every version of the real apps or every account (Instagram runs a lot of A/B tests).
+- A very hard fling on a feed can show you a glimpse of the next post before it gets pulled back.
 - It's a speed bump, not a prison. You can turn it off in settings whenever you want. The point is to make the mindless scroll a conscious choice.
 
 ## Building it yourself

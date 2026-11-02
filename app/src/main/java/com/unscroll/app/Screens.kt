@@ -5,16 +5,12 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 /** What the user is currently looking at inside a guarded app. */
 enum class Screen {
-    /** Anything we don't care about (search, profile, settings...). */
+    /** Anything we don't care about (DMs, search, profile, regular videos...). */
     OK,
-    /** A DM conversation. Remembered so a reel opened from it can be let through. */
-    DM_THREAD,
-    /** A scrollable home feed: fine to look at, blocked as soon as it's scrolled. */
+    /** A full-screen reel / short. The current one plays; swiping to the next is undone. */
+    SHORTS,
+    /** A home feed. You can see the top of it, but scrolling down is undone. */
     FEED,
-    /** A full-screen reel / short viewer. Blocked unless it was opened from a DM. */
-    VIEWER,
-    /** Always blocked (the Reels tab, the Shorts tab). */
-    BLOCKED,
 }
 
 /** Flattened copy of the bits of the view tree we need, so detectors stay simple. */
@@ -79,40 +75,35 @@ object Detectors {
     }
 
     private fun instagram(s: Snapshot): Screen {
-        if (s.selected { it.id == "clips_tab" || it.desc.equals("Reels", true) }) return Screen.BLOCKED
         val viewer = s.hasFullScreen {
             it.id.startsWith("clips_viewer") || it.id == "root_clips_layout" || it.id.startsWith("clips_video")
         }
-        if (viewer) return Screen.VIEWER
-        val thread = s.hasId { it.contains("thread_composer") || it.startsWith("direct_thread") } ||
-            s.nodes.any { it.editable && it.text.startsWith("Message", true) }
-        if (thread) return Screen.DM_THREAD
-        if (s.selected { it.id == "feed_tab" || it.id == "search_tab" }) return Screen.FEED
+        if (viewer || s.selected { it.id == "clips_tab" }) return Screen.SHORTS
+        if (s.selected { it.id == "feed_tab" }) return Screen.FEED
         return Screen.OK
     }
 
     // Lite draws most of its UI itself and exposes very little, so this one leans on labels.
     private fun instagramLite(s: Snapshot): Screen {
-        if (s.selected { it.desc.contains("Reels", true) || it.text.equals("Reels", true) }) return Screen.BLOCKED
-        val thread = s.nodes.any { it.editable && (it.text.contains("Message", true) || it.desc.contains("Message", true)) }
-        if (thread) return Screen.DM_THREAD
+        if (s.selected { it.desc.contains("Reels", true) || it.text.equals("Reels", true) }) return Screen.SHORTS
+        if (s.nodes.any { it.editable }) return Screen.OK // a chat or search box
         val actions = listOf("Like", "Comment", "Share").count { w ->
             s.nodes.any { it.desc.startsWith(w, true) }
         }
         if (actions == 3 && s.nodes.any { it.desc.contains("reel", true) || it.text.contains("reel", true) }) {
-            return Screen.VIEWER
+            return Screen.SHORTS
         }
         if (s.selected { it.desc.startsWith("Home", true) }) return Screen.FEED
         return Screen.OK
     }
 
     private fun youtube(s: Snapshot): Screen {
-        if (s.selected { it.desc.equals("Shorts", true) }) return Screen.BLOCKED
+        if (s.selected { it.desc.equals("Shorts", true) }) return Screen.SHORTS
         val shortsPlayer = s.hasFullScreen {
             it.id == "reel_recycler" || it.id.startsWith("reel_player") || it.id.startsWith("reel_watch") ||
                 it.id == "shorts_container"
         }
-        return if (shortsPlayer) Screen.BLOCKED else Screen.OK
+        return if (shortsPlayer) Screen.SHORTS else Screen.OK
     }
 
     private fun reddit(s: Snapshot): Screen {
