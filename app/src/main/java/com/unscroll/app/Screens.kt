@@ -93,7 +93,9 @@ object Detectors {
         if (actions == 3 && s.nodes.any { it.desc.contains("reel", true) || it.text.contains("reel", true) }) {
             return Screen.SHORTS
         }
-        if (s.selected { it.desc.startsWith("Home", true) }) return Screen.FEED
+        // Lite never marks the Home tab selected; feed posts are the ones labelled "N likes" / "View all N comments".
+        val post = Regex("""^[\d.,]+[KM]? likes?$|^View all .*comments?$""", RegexOption.IGNORE_CASE)
+        if (s.nodes.any { it.desc.startsWith("Home", true) } && s.nodes.any { post.containsMatchIn(it.desc) }) return Screen.FEED
         return Screen.OK
     }
 
