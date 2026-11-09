@@ -5,7 +5,6 @@ import java.time.LocalDate
 
 enum class Target(val pkg: String) {
     INSTAGRAM("com.instagram.android"),
-    INSTAGRAM_LITE("com.instagram.lite"),
     YOUTUBE("com.google.android.youtube"),
     REDDIT("com.reddit.frontpage");
 
@@ -18,14 +17,12 @@ enum class Target(val pkg: String) {
 enum class Guard(val key: String) {
     // Keys kept from 1.x so existing switches carry over.
     INSTAGRAM("ig_reels"),
-    INSTAGRAM_LITE("lite_reels"),
     YOUTUBE_SHORTS("yt_shorts"),
     REDDIT_FEED("reddit_feed");
 
     companion object {
         fun of(t: Target, s: Screen): Guard? = if (s == Screen.OK) null else when (t) {
             Target.INSTAGRAM -> INSTAGRAM
-            Target.INSTAGRAM_LITE -> INSTAGRAM_LITE
             Target.YOUTUBE -> YOUTUBE_SHORTS
             Target.REDDIT -> REDDIT_FEED
         }

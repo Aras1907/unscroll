@@ -1,6 +1,6 @@
 # Unscroll
 
-Android app (Kotlin, Jetpack Compose, Material 3, minSdk 28) that stops doom scrolling in Instagram, Instagram Lite, YouTube Shorts and the Reddit home feed. Instagram (and Lite): the home feed, Reels tab and Explore grid are covered by an accessibility overlay (`Screen.BLOCKED`), leaving the top bar (DM button / search box) and bottom tabs usable. A reel or post opened from a DM, search or a profile is `Screen.SINGLE`: it shows, and scrolling on to the next item is undone. YouTube Shorts (`SINGLE`) and the Reddit feed (`FEED`) only get the scroll-back.
+Android app (Kotlin, Jetpack Compose, Material 3, minSdk 28) that stops doom scrolling in Instagram, YouTube Shorts and the Reddit home feed. Instagram: the home feed, Reels tab and Explore grid are covered by an accessibility overlay (`Screen.BLOCKED`), leaving the bottom tabs (DMs live there) and the Home/Explore top bar usable. A reel or post opened from a DM, search or a profile is `Screen.SINGLE`: it shows, and scrolling on to the next item is undone. YouTube Shorts (`SINGLE`) and the Reddit feed (`FEED`) only get the scroll-back.
 
 Public repo: https://github.com/Aras1907/unscroll. Users install the APK from GitHub Releases.
 
@@ -16,10 +16,12 @@ Public repo: https://github.com/Aras1907/unscroll. Users install the APK from Gi
 
 ## Detection notes
 
-- Instagram: `clips_tab` selected means BLOCKED. A full-screen `clips_viewer*` / `root_clips_layout` / `clips_video*` means SINGLE. `feed_tab` selected (and no editable field, so a chat is never covered) means BLOCKED. `search_tab` with an idle, empty search box at the top means BLOCKED (Explore grid). Any other list with `row_feed_*` rows means SINGLE. These ids are from memory and the stand-in app, not verified against the real app yet.
+- Instagram (verified on 454.0.0.54.77, Nov 2026): a tab counts as selected if it or a child is selected (Home marks a child, Reels marks the tab). `clips_tab` selected means BLOCKED. A full-screen `clips_viewer*` / `root_clips_layout` / `clips_video*` means SINGLE (DM, search and profile reels). `feed_tab` selected with no editable field means BLOCKED. `search_tab` selected plus grid tiles described "... at row N, column M" means BLOCKED (Explore). Search results hide the tab bar, so they never match. Any other list with `row_feed_*` rows means SINGLE.
+- Instagram keeps the other tabs' pages in the tree with empty bounds (left > right). `Snapshot.of` skips empty-bounds subtrees; without that, Home looked like a full-screen reel.
+- `action_bar_search_edit_text` on Explore reports editable to accessibility even though it's a button.
 - YouTube: Shorts pivot tab selected (`content-desc="Shorts"`, selected) or a full-screen `reel_recycler` / `reel_player*` / `reel_watch*`.
 - Reddit: bottom tab bar (Communities/Inbox/Chat/Create) plus vote buttons means FEED.
-- Instagram Lite draws its own UI and exposes little. Its rules are label-based. Lite shows "not available in your region" on the emulator (server-side check after login), so it can't be tested there right now.
+- Instagram Lite is deliberately unsupported (removed after 2.0.0): it exposes too little to block reliably.
 
 ## Environment quirks (VSCodium flatpak sandbox)
 
@@ -38,7 +40,7 @@ adb shell "settings put secure enabled_accessibility_services com.unscroll.app/c
 
 - Reinstalling can unbind the service, so re-run the `settings put` above after every install.
 - **Don't use `uiautomator dump` while testing behaviour.** It takes over accessibility and briefly unbinds Unscroll, so the next swipe goes through and the test looks like a failure. Use it only to inspect a layout, and check behaviour from screenshots (`adb exec-out screencap`) or logcat.
-- There's no Google account on the emulator, so Instagram and Reddit can't come from Play. To test the scroll-back mechanics without them, build a throwaway app in the scratchpad with `applicationId = "com.instagram.android"` that mimics the view IDs (vertical ViewPager2 `clips_viewer_view_pager`, RecyclerView of `row_feed_*` rows, bottom tabs `feed_tab`/`search_tab`/`clips_tab`/`profile_tab`, `action_bar_inbox_button`, an EditText search box on the search tab). Never commit it, and uninstall it afterwards.
+- Real Instagram is installed on the emulator (via Aurora Store) and logged in to the owner's test account. Test against it with screenshots; use `uiautomator dump` only to inspect layout. Swipe slowly (`input swipe 400 1800 400 400 400`): a fast 150 ms swipe doesn't advance Instagram's reel pager even with the guard off, so it proves nothing. There's no Google account, so Reddit can't come from Play. If real Instagram is ever unavailable, build a throwaway app in the scratchpad with `applicationId = "com.instagram.android"` that mimics the view IDs (vertical ViewPager2 `clips_viewer_view_pager`, RecyclerView of `row_feed_*` rows, bottom tabs `feed_tab`/`search_tab`/`clips_tab`/`profile_tab`, `action_bar_inbox_button`, an EditText search box on the search tab). It shares Instagram's package name, so it can't be installed alongside the real app. Never commit it, and uninstall it afterwards.
 
 ## Releasing
 

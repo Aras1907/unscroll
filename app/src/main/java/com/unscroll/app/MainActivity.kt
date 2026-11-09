@@ -103,7 +103,6 @@ private fun Home(prefs: Prefs) {
             SectionTitle("Instagram", "Home feed, Reels tab and Explore are covered up.")
             Card(shape = RoundedCornerShape(24.dp)) {
                 AppToggle(prefs, Guard.INSTAGRAM, "Instagram", "DMs, search and profiles work as usual")
-                AppToggle(prefs, Guard.INSTAGRAM_LITE, "Instagram Lite", "Best effort. Lite shows other apps very little")
             }
             Text(
                 "Reels and posts friends send you in DMs still open. You see the one you were sent, and swiping on to the next one snaps back.",
