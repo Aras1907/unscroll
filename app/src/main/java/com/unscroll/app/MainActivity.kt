@@ -96,26 +96,25 @@ private fun Home(prefs: Prefs) {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Stat("Swipes undone today", today, Modifier.weight(1f))
+                Stat("Blocked today", today, Modifier.weight(1f))
                 Stat("All time", total, Modifier.weight(1f))
             }
 
-            SectionTitle("Short videos", "Watch what's on screen. Swiping to the next one snaps back.")
+            SectionTitle("Instagram", "Home feed, Reels tab and Explore are covered up.")
             Card(shape = RoundedCornerShape(24.dp)) {
-                AppToggle(prefs, Guard.INSTAGRAM_REELS, "Instagram Reels", "Reels tab, and reels opened from anywhere else")
-                AppToggle(prefs, Guard.LITE_REELS, "Instagram Lite Reels", "Best effort. Lite shows other apps very little")
-                AppToggle(prefs, Guard.YOUTUBE_SHORTS, "YouTube Shorts", "Normal videos are left alone")
+                AppToggle(prefs, Guard.INSTAGRAM, "Instagram", "DMs, search and profiles work as usual")
+                AppToggle(prefs, Guard.INSTAGRAM_LITE, "Instagram Lite", "Best effort. Lite shows other apps very little")
             }
             Text(
-                "Reels friends send you in DMs still open and play. You just can't swipe on to the next one.",
+                "Reels and posts friends send you in DMs still open. You see the one you were sent, and swiping on to the next one snaps back.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
 
-            SectionTitle("Feeds", "You see what's at the top. Scrolling down is undone.")
+            SectionTitle("Other apps", "Watch what's on screen. Scrolling on snaps back.")
             Card(shape = RoundedCornerShape(24.dp)) {
-                AppToggle(prefs, Guard.INSTAGRAM_FEED, "Instagram feed", "Home feed in Instagram and Instagram Lite")
+                AppToggle(prefs, Guard.YOUTUBE_SHORTS, "YouTube Shorts", "Normal videos are left alone")
                 AppToggle(prefs, Guard.REDDIT_FEED, "Reddit feed", "Home and Popular")
             }
 
@@ -145,7 +144,7 @@ private fun StatusCard(on: Boolean, openSettings: () -> Unit) {
                 )
             }
             Text(
-                if (on) "Go ahead and open Instagram. Try swiping to the next reel."
+                if (on) "Go ahead and open Instagram. The home feed should be covered, and your DMs one tap away."
                 else "Unscroll needs accessibility access to notice when you swipe in Reels or Shorts and scroll it back. Tap below, open \"Unscroll guard\" and switch it on.",
             )
             if (!on) {

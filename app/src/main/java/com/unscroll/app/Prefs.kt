@@ -16,26 +16,18 @@ enum class Target(val pkg: String) {
 
 /** Each switch in the app. */
 enum class Guard(val key: String) {
-    INSTAGRAM_REELS("ig_reels"),
-    LITE_REELS("lite_reels"),
+    // Keys kept from 1.x so existing switches carry over.
+    INSTAGRAM("ig_reels"),
+    INSTAGRAM_LITE("lite_reels"),
     YOUTUBE_SHORTS("yt_shorts"),
-    INSTAGRAM_FEED("ig_feed"),
     REDDIT_FEED("reddit_feed");
 
     companion object {
-        fun of(t: Target, s: Screen): Guard? = when (s) {
-            Screen.SHORTS -> when (t) {
-                Target.INSTAGRAM -> INSTAGRAM_REELS
-                Target.INSTAGRAM_LITE -> LITE_REELS
-                Target.YOUTUBE -> YOUTUBE_SHORTS
-                Target.REDDIT -> null
-            }
-            Screen.FEED -> when (t) {
-                Target.INSTAGRAM, Target.INSTAGRAM_LITE -> INSTAGRAM_FEED
-                Target.REDDIT -> REDDIT_FEED
-                Target.YOUTUBE -> null
-            }
-            Screen.OK -> null
+        fun of(t: Target, s: Screen): Guard? = if (s == Screen.OK) null else when (t) {
+            Target.INSTAGRAM -> INSTAGRAM
+            Target.INSTAGRAM_LITE -> INSTAGRAM_LITE
+            Target.YOUTUBE -> YOUTUBE_SHORTS
+            Target.REDDIT -> REDDIT_FEED
         }
     }
 }

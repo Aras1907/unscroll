@@ -1,18 +1,26 @@
 package com.unscroll.app
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Color
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Lets you look at whatever is on screen, but undoes scrolling forward in Reels, Shorts and feeds.
- * A reel opened from a DM plays like any other; swiping to the next one just snaps back.
+ * Covers the Instagram feeds (home, Reels tab, Explore grid) and undoes scrolling past the one reel or post
+ * you opened, e.g. from a DM. YouTube Shorts and the Reddit feed get the scroll-back only.
  */
 class GuardService : AccessibilityService() {
 
@@ -32,6 +40,7 @@ class GuardService : AccessibilityService() {
     private var evalPending = false
     /** A screen change only counts once two evaluations in a row agree, so loading blips don't reset [anchor]. */
     private var pending: Pair<Target, Screen>? = null
+    private var cover: View? = null
 
     override fun onServiceConnected() {
         prefs = Prefs(this)
@@ -39,12 +48,23 @@ class GuardService : AccessibilityService() {
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (!::prefs.isInitialized) return
-        val t = Target.of(e.packageName?.toString()) ?: return
+        val pkg = e.packageName?.toString()
+        val t = Target.of(pkg)
+        if (t == null) {
+            // Another app or the home screen came up: the cover has to go with Instagram.
+            if (cover != null && pkg != packageName && e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) scheduleEval()
+            return
+        }
         if (e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) onScroll(t, e)
         scheduleEval()
     }
 
     override fun onInterrupt() {}
+
+    override fun onDestroy() {
+        hideCover()
+        super.onDestroy()
+    }
 
     private fun scheduleEval() {
         if (evalPending) return
@@ -53,35 +73,48 @@ class GuardService : AccessibilityService() {
     }
 
     private fun evaluate() {
-        val (t, root) = foreground() ?: return
-        val now = SystemClock.uptimeMillis()
-        val s = Detectors.classify(t, Snapshot.of(root, screenH()))
-        if (t == current && s == screen) {
-            pending = null
+        val root = rootInActiveWindow
+            ?: windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isActive }?.root
+            ?: return
+        val pkg = root.packageName?.toString()
+        val t = Target.of(pkg)
+        if (t == null) {
+            if (pkg != packageName) {
+                hideCover()
+                current = null
+                screen = Screen.OK
+            }
             return
         }
-        if (pending != t to s) {
-            pending = t to s
-            scheduleEval()
-            return
+        val snap = Snapshot.of(root, screenH())
+        val s = Detectors.classify(t, snap)
+        if (t != current || s != screen) {
+            if (pending != t to s) {
+                pending = t to s
+                scheduleEval()
+                return
+            }
+            current = t
+            screen = s
+            screenSince = SystemClock.uptimeMillis()
+            anchor = -1
+            travelled = 0
+            backedOut = false
         }
         pending = null
-        current = t
-        screen = s
-        screenSince = now
-        anchor = -1
-        travelled = 0
-        backedOut = false
+
+        val guard = Guard.of(t, s)
+        if (s == Screen.BLOCKED && guard != null && prefs.isOn(guard)) showCover(Detectors.cover(snap)) else hideCover()
     }
 
     private fun onScroll(t: Target, e: AccessibilityEvent) {
-        if (t != current) return
+        if (t != current || screen == Screen.BLOCKED) return
         val guard = Guard.of(t, screen) ?: return
         if (!prefs.isOn(guard)) return
 
         val src = e.source ?: return
         val r = Rect().also(src::getBoundsInScreen)
-        val minHeight = if (screen == Screen.SHORTS) 0.6 else 0.4
+        val minHeight = if (screen == Screen.SINGLE) 0.6 else 0.4
         if (r.height() < screenH() * minHeight) return // comments sheet, stories tray, etc.
         val dx = e.scrollDeltaX
         val dy = e.scrollDeltaY
@@ -101,21 +134,21 @@ class GuardService : AccessibilityService() {
 
         val forward = idx > anchor ||
             (screen == Screen.FEED && dy > 0) ||
-            (screen == Screen.SHORTS && travelled > screenH() / 2)
+            (screen == Screen.SINGLE && travelled > screenH() / 2)
         if (!forward || now - lastSnap < SNAP_GAP_MS) return
         lastSnap = now
         travelled = 0
 
         if (!scrollBack(src)) {
             // No way to scroll this view back, so leave the screen instead (once).
-            if (screen != Screen.SHORTS || backedOut) return
+            if (screen != Screen.SINGLE || backedOut) return
             backedOut = true
             performGlobalAction(GLOBAL_ACTION_BACK)
         }
         prefs.countBlock()
         if (now - lastToast > TOAST_GAP_MS) {
             lastToast = now
-            val msg = if (screen == Screen.SHORTS) "Just this one. Scrolling is off here." else "Feed scrolling is off."
+            val msg = if (screen == Screen.SINGLE) "Just this one. Scrolling is off here." else "Feed scrolling is off."
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
@@ -130,13 +163,57 @@ class GuardService : AccessibilityService() {
         return false
     }
 
-    /** The guarded app on top of the screen, if there is one. */
-    private fun foreground(): Pair<Target, AccessibilityNodeInfo>? {
-        val root = rootInActiveWindow
-            ?: windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isActive }?.root
-            ?: return null
-        val t = Target.of(root.packageName?.toString()) ?: return null
-        return t to root
+    /** Puts an opaque, touch-eating panel over screen rows [area], or moves the one already up. */
+    private fun showCover(area: IntRange) {
+        val wm = getSystemService(WindowManager::class.java)
+        val existing = cover
+        val lp = (existing?.layoutParams as? WindowManager.LayoutParams) ?: WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            0,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.OPAQUE,
+        ).apply { gravity = Gravity.TOP or Gravity.START }
+        val height = (area.last - area.first).coerceAtLeast(1)
+        if (existing != null && lp.y == area.first && lp.height == height) return
+        lp.y = area.first
+        lp.height = height
+        // Bounds read mid-animation (an app opening) are scaled; look again once it has settled.
+        main.postDelayed({ evaluate() }, 600)
+        if (existing == null) {
+            cover = coverView().also { wm.addView(it, lp) }
+            prefs.countBlock()
+        } else {
+            wm.updateViewLayout(existing, lp)
+        }
+    }
+
+    private fun hideCover() {
+        val v = cover ?: return
+        cover = null
+        runCatching { getSystemService(WindowManager::class.java).removeView(v) }
+    }
+
+    private fun coverView(): View {
+        fun text(s: String, size: Float, alpha: Float) = TextView(this).apply {
+            text = s
+            setTextColor(Color.WHITE)
+            this.alpha = alpha
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+            gravity = Gravity.CENTER
+        }
+        val pad = (32 * resources.displayMetrics.density).toInt()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(pad, pad, pad, pad)
+            setBackgroundColor(Color.rgb(18, 18, 18))
+            isClickable = true // swallow taps and swipes so nothing underneath scrolls
+            addView(text("The feed is off", 24f, 1f))
+            addView(text("Messages, search and your profile still work.", 15f, 0.7f))
+        }
     }
 
     private fun screenH() = resources.displayMetrics.heightPixels
