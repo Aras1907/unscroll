@@ -1,6 +1,6 @@
 # Unscroll
 
-Android app (Kotlin, Jetpack Compose, Material 3, minSdk 28) that stops doom scrolling in Instagram, YouTube Shorts and the Reddit home feed. Instagram: the home feed, Reels tab and Explore grid are covered by an accessibility overlay (`Screen.BLOCKED`), leaving the bottom tabs (DMs live there) and the Home/Explore top bar usable. A reel or post opened from a DM, search or a profile is `Screen.SINGLE`: it shows, and scrolling on to the next item is undone. YouTube Shorts (`SINGLE`) and the Reddit feed (`FEED`) only get the scroll-back.
+Android app (Kotlin, Jetpack Compose, Material 3, minSdk 28) that stops doom scrolling in Instagram, YouTube Shorts and the Reddit home feed. Instagram (3.0, messages only): on the home feed, Reels tab and Explore grid (`Screen.BLOCKED`) the service taps the DM tab / inbox button (`GuardService.leave`); the overlay cover is only a fallback if no button is found after 3 tries. The DM inbox and chats are `OK` and scroll freely. A reel or post opened from a DM is `Screen.SINGLE`. Every other Instagram screen without a text field (profiles, grids) is `FEED`: forward scrolls are undone. Screens with a text field stay `OK` so a chat is never locked by mistake, which leaves search and comments scrollable. Feed data can't be stopped from loading: no root, no INTERNET permission, and feed and DM traffic share hosts under TLS. YouTube Shorts (`SINGLE`) and the Reddit feed (`FEED`) only get the scroll-back.
 
 Public repo: https://github.com/Aras1907/unscroll. Users install the APK from GitHub Releases.
 
@@ -16,6 +16,7 @@ Public repo: https://github.com/Aras1907/unscroll. Users install the APK from Gi
 
 ## Detection notes
 
+- `DM_IDS` (Screens.kt), `direct_tab` and `DM_LABELS` (GuardService.kt) were guessed in 3.0.0 without a device: dump the inbox and a chat to confirm them.
 - Instagram (verified on 454.0.0.54.77, Nov 2026): a tab counts as selected if it or a child is selected (Home marks a child, Reels marks the tab). `clips_tab` selected means BLOCKED. A full-screen `clips_viewer*` / `root_clips_layout` / `clips_video*` means SINGLE (DM, search and profile reels). `feed_tab` selected with no editable field means BLOCKED. `search_tab` selected plus grid tiles described "... at row N, column M" means BLOCKED (Explore). Search results hide the tab bar, so they never match. Any other list with `row_feed_*` rows means SINGLE.
 - Instagram keeps the other tabs' pages in the tree with empty bounds (left > right). `Snapshot.of` skips empty-bounds subtrees; without that, Home looked like a full-screen reel.
 - `action_bar_search_edit_text` on Explore reports editable to accessibility even though it's a button.

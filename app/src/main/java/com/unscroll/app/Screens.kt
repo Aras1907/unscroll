@@ -9,9 +9,9 @@ enum class Screen {
     OK,
     /** One reel / short / post, e.g. opened from a DM. The current one stays; moving on to the next is undone. */
     SINGLE,
-    /** A feed you can see the top of, but scrolling down is undone (Reddit). */
+    /** A screen you can see the top of, but scrolling down is undone (Reddit feed, Instagram outside DMs). */
     FEED,
-    /** A feed nobody opened on purpose (Instagram home, Reels tab, Explore grid). Covered up entirely. */
+    /** A feed nobody opened on purpose (Instagram home, Reels tab, Explore grid). Left at once, for DMs or search. */
     BLOCKED,
 }
 
@@ -109,7 +109,13 @@ object Detectors {
             it.id.startsWith("clips_viewer") || it.id == "root_clips_layout" || it.id.startsWith("clips_video")
         }
         if (viewer) return Screen.SINGLE // a reel opened from a DM, search, a profile...
-        // The editable check keeps a chat from ever being covered, even if a hidden tab bar still says "home".
+        // DMs are the only place that scrolls freely. Checked after the viewer so a reel opened over a chat stays SINGLE.
+        val dms = tab("direct_tab") || s.nodes.any { n ->
+            n.bounds.height() > s.screenH * 0.4 && !n.id.endsWith("_tab") && !n.id.endsWith("_button") &&
+                DM_IDS.any { n.id.contains(it) }
+        }
+        if (dms) return Screen.OK
+        // The editable check keeps a chat from ever being blocked, even if a hidden tab bar still says "home".
         if (tab("feed_tab") && s.nodes.none { it.editable }) return Screen.BLOCKED
         // Explore grid. Searching hides the tab bar, so search results never match this.
         if (tab("search_tab") && s.nodes.any { GRID_TILE.containsMatchIn(it.desc) }) {
@@ -117,8 +123,13 @@ object Detectors {
         }
         // A list of posts outside Home: the one you opened (e.g. from a DM) stays, the ones after it don't.
         if (s.hasId { it.startsWith("row_feed_") }) return Screen.SINGLE
-        return Screen.OK
+        // Everything else (profiles, grids, suggestions) shows but won't scroll. Screens with a text field (a chat
+        // we failed to recognise, search, comments) are left alone so DMs can never get locked by mistake.
+        return if (s.nodes.any { it.editable }) Screen.OK else Screen.FEED
     }
+
+    // shortcut: guessed from Instagram's naming, not checked on 454; verify with a uiautomator dump of the inbox and a chat.
+    private val DM_IDS = listOf("inbox", "direct_thread", "row_thread", "message_list", "thread_message")
 
     private fun youtube(s: Snapshot): Screen {
         if (s.selected { it.desc.equals("Shorts", true) }) return Screen.SINGLE

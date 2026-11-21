@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">Unscroll</string>
     <string name="service_label">Unscroll guard</string>
-    <string name="service_description">Unscroll covers the Instagram home feed, Reels tab and Explore grid, and stops you scrolling on from a reel or post someone sent you. YouTube Shorts and the Reddit feed snap back when you swipe. It reads screen layout only to recognise those screens. Nothing is stored or sent anywhere.</string>
+    <string name="service_description">Unscroll turns Instagram into messages only: the home feed, Reels tab and Explore send you straight to your DMs, nothing outside the DMs scrolls, and a reel or post someone sent you shows on its own. YouTube Shorts and the Reddit feed snap back when you swipe. It reads screen layout only to recognise those screens. Nothing is stored or sent anywhere.</string>
 </resources>

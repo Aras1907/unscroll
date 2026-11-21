@@ -19,8 +19,9 @@ import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Covers the Instagram feeds (home, Reels tab, Explore grid) and undoes scrolling past the one reel or post
- * you opened, e.g. from a DM. YouTube Shorts and the Reddit feed get the scroll-back only.
+ * Instagram: leaves the feeds (home, Reels tab, Explore grid) for the DMs, undoes scrolling everywhere except
+ * the DMs, and lets you see only the one reel or post you opened. YouTube Shorts and the Reddit feed get the
+ * scroll-back only.
  */
 class GuardService : AccessibilityService() {
 
@@ -38,6 +39,8 @@ class GuardService : AccessibilityService() {
     private var lastToast = 0L
     private var backedOut = false
     private var evalPending = false
+    private var lastLeave = 0L
+    private var leaveTries = 0
     /** A screen change only counts once two evaluations in a row agree, so loading blips don't reset [anchor]. */
     private var pending: Pair<Target, Screen>? = null
     private var cover: View? = null
@@ -100,11 +103,49 @@ class GuardService : AccessibilityService() {
             anchor = -1
             travelled = 0
             backedOut = false
+            leaveTries = 0
         }
         pending = null
 
         val guard = Guard.of(t, s)
-        if (s == Screen.BLOCKED && guard != null && prefs.isOn(guard)) showCover(Detectors.cover(snap)) else hideCover()
+        if (s == Screen.BLOCKED && guard != null && prefs.isOn(guard)) {
+            // Leave the feed rather than paint over it. The cover is only a fallback for when no way out is found.
+            if (leave(root)) hideCover() else showCover(Detectors.cover(snap))
+        } else hideCover()
+    }
+
+    /**
+     * Taps out of a blocked feed into the DMs. Gives up after a few taps that didn't
+     * change the screen, so a renamed button can't leave us tapping forever with the feed showing.
+     */
+    private fun leave(root: AccessibilityNodeInfo): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastLeave < LEAVE_GAP_MS) return true // still waiting for the last tap to land
+        if (leaveTries >= 3) return false
+        val target = LEAVE_IDS.firstNotNullOfOrNull { id ->
+            root.findAccessibilityNodeInfosByViewId("${root.packageName}:id/$id").firstOrNull(::onScreen)
+        } ?: find(root) { n -> onScreen(n) && DM_LABELS.any { n.contentDescription?.toString().equals(it, true) } }
+        ?: return false
+        var n: AccessibilityNodeInfo? = target
+        while (n != null && !n.isClickable) n = n.parent
+        if (n?.performAction(AccessibilityNodeInfo.ACTION_CLICK) != true) return false
+        lastLeave = now
+        leaveTries++
+        prefs.countBlock()
+        return true
+    }
+
+    private fun onScreen(n: AccessibilityNodeInfo) = !Rect().also(n::getBoundsInScreen).isEmpty
+
+    private fun find(root: AccessibilityNodeInfo, pred: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+        val stack = ArrayDeque<AccessibilityNodeInfo>().apply { addLast(root) }
+        var seen = 0
+        while (stack.isNotEmpty() && seen++ < 2500) {
+            val n = stack.removeLast()
+            if (pred(n)) return n
+            for (i in n.childCount - 1 downTo 0) n.getChild(i)?.let(stack::addLast)
+        }
+        return null
     }
 
     private fun onScroll(t: Target, e: AccessibilityEvent) {
@@ -222,5 +263,9 @@ class GuardService : AccessibilityService() {
         private const val SETTLE_MS = 1000L
         private const val SNAP_GAP_MS = 350L
         private const val TOAST_GAP_MS = 4000L
+        private const val LEAVE_GAP_MS = 800L
+        // shortcut: direct_tab and the labels are unverified on Instagram 454; action_bar_inbox_button is verified.
+        private val LEAVE_IDS = listOf("direct_tab", "action_bar_inbox_button")
+        private val DM_LABELS = listOf("Messages", "Message", "Direct", "Messenger")
     }
 }

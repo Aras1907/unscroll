@@ -100,9 +100,9 @@ private fun Home(prefs: Prefs) {
                 Stat("All time", total, Modifier.weight(1f))
             }
 
-            SectionTitle("Instagram", "Home feed, Reels tab and Explore are covered up.")
+            SectionTitle("Instagram", "Messages only. Home, Reels and Explore send you to your DMs.")
             Card(shape = RoundedCornerShape(24.dp)) {
-                AppToggle(prefs, Guard.INSTAGRAM, "Instagram", "DMs, search and profiles work as usual")
+                AppToggle(prefs, Guard.INSTAGRAM, "Instagram", "Only your DMs scroll")
             }
             Text(
                 "Reels and posts friends send you in DMs still open. You see the one you were sent, and swiping on to the next one snaps back.",
@@ -143,7 +143,7 @@ private fun StatusCard(on: Boolean, openSettings: () -> Unit) {
                 )
             }
             Text(
-                if (on) "Go ahead and open Instagram. The home feed should be covered, and your DMs one tap away."
+                if (on) "Go ahead and open Instagram. It should drop you straight into your DMs."
                 else "Unscroll needs accessibility access to notice when you swipe in Reels or Shorts and scroll it back. Tap below, open \"Unscroll guard\" and switch it on.",
             )
             if (!on) {
